@@ -52,6 +52,7 @@ bool
 CCommentParser::
 processCChar(int c)
 {
+  // in double quoted string
   if      (state_.in_string1) {
     if     (c == '\\') {
       put_normal(c);
@@ -69,6 +70,7 @@ processCChar(int c)
       put_normal(c);
     }
   }
+  // in single quoted string
   else if (state_.in_string2) {
     if     (c == '\\') {
       put_normal(c);
@@ -86,6 +88,7 @@ processCChar(int c)
       put_normal(c);
     }
   }
+  // in C comment
   else if (state_.in_comment1) {
     if (c == '*') {
       c = getChar();
@@ -115,6 +118,7 @@ processCChar(int c)
 
     return true;
   }
+  // in C++ comment
   else if (state_.in_comment2) {
     if (c == '\n') {
       end_comment();
@@ -130,11 +134,13 @@ processCChar(int c)
     return true;
   }
   else {
+    // start double quoted string
     if      (c == '"') {
       put_normal(c);
 
       state_.in_string1 = true;
     }
+    // start single quoted string
     else if (c == '\'') {
       put_normal(c);
 
@@ -150,15 +156,112 @@ processCChar(int c)
         return true;
       }
 
+      // C or C++ comment
       start_comment();
 
-      put_comment('/');
-      put_comment(c  );
+      commentBuffer_.push_back('/');
+      commentBuffer_.push_back(c  );
 
-      if (c == '*')
+      if (c == '*') {
         state_.in_comment1 = true;
-      else
+        state_.commentType = CommentType::C_NORMAL;
+
+        int c1 = getChar();
+
+        if (c1 != EOF)
+          commentBuffer_.push_back(c1);
+
+        if      (c1 == '*') {
+          int c2 = getChar();
+
+          if (c2 != EOF)
+            commentBuffer_.push_back(c2);
+
+          if      (isspace(c2)) {
+            state_.commentType = CommentType::JAVADOC;
+          }
+          else if (c2 == '<') {
+            int c3 = getChar();
+
+            if (c3 != EOF)
+              commentBuffer_.push_back(c2);
+
+            if (isspace(c3)) {
+              state_.commentType = CommentType::JAVADOC_AFTER;
+            }
+          }
+          else if (c2 == '/') {
+            end_comment();
+          }
+        }
+        else if (c1 == '!') {
+          int c2 = getChar();
+
+          if (c2 != EOF)
+            commentBuffer_.push_back(c2);
+
+          if      (isspace(c2)) {
+            state_.commentType = CommentType::QT;
+          }
+          else if (c2 == '<') {
+            int c3 = getChar();
+
+            if (c3 != EOF)
+              commentBuffer_.push_back(c2);
+
+            if (isspace(c3)) {
+              state_.commentType = CommentType::QT_AFTER;
+            }
+          }
+        }
+      }
+      else {
         state_.in_comment2 = true;
+        state_.commentType = CommentType::CPP_NORMAL;
+
+        int c1 = getChar();
+
+        if (c1 != EOF)
+          commentBuffer_.push_back(c1);
+
+        if      (c1 == '/') {
+          int c2 = getChar();
+
+          if (c2 != EOF)
+            commentBuffer_.push_back(c2);
+
+          if (isspace(c2)) {
+            state_.commentType = CommentType::CPP_BLOCK;
+          }
+        }
+        else if (c1 == '!') {
+          int c2 = getChar();
+
+          if (c2 != EOF)
+            commentBuffer_.push_back(c2);
+
+          if      (isspace(c2)) {
+            state_.commentType = CommentType::QT;
+          }
+          else if (c2 == '<') {
+            int c3 = getChar();
+
+            if (c3 != EOF)
+              commentBuffer_.push_back(c2);
+
+            if (isspace(c3)) {
+              state_.commentType = CommentType::QT_AFTER;
+            }
+          }
+        }
+      }
+
+      set_comment_type(state_.commentType);
+
+      for (const auto &c : commentBuffer_)
+        put_comment(c);
+
+      commentBuffer_.clear();
     }
     else {
       put_normal(c);

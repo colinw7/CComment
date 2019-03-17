@@ -69,9 +69,21 @@ put_normal(char c)
 
 void
 CComment::
+set_comment_type(CommentType type)
+{
+  commentType_ = type;
+}
+
+void
+CComment::
 put_comment(char c)
 {
   if (c == '\n' || isReverse()) {
+    if (isDoxygen()) {
+      if (commentType_ == CommentType::C_NORMAL || commentType_ == CommentType::CPP_NORMAL)
+        return;
+    }
+
     if (! isQuiet())
       fputc(c, stdout);
 

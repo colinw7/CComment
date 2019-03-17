@@ -10,6 +10,7 @@ main(int argc, char **argv)
   bool reverse = false;
   bool quiet   = false;
   bool spell   = false;
+  bool doxygen = false;
 
   std::vector<std::string> files;
 
@@ -24,8 +25,16 @@ main(int argc, char **argv)
       else if (strcmp(&argv[i][1], "S") == 0 ||
                strcmp(&argv[i][1], "-spell") == 0)
         spell = true;
+      else if (strcmp(&argv[i][1], "D") == 0 ||
+               strcmp(&argv[i][1], "-doxygen") == 0)
+        doxygen = true;
+      else if (strcmp(&argv[i][1], "h") == 0 ||
+               strcmp(&argv[i][1], "-help") == 0) {
+        std::cout << "Usage: CComment [-r] [-q] [-S]\n";
+        exit(0);
+      }
       else
-        std::cerr << "Illegal option " << argv[i] << std::endl;
+        std::cerr << "Illegal option " << argv[i] << "\n";
     }
     else
       files.push_back(argv[i]);
@@ -36,6 +45,7 @@ main(int argc, char **argv)
   comment.setReverse(reverse);
   comment.setQuiet  (quiet);
   comment.setSpell  (spell);
+  comment.setDoxygen(doxygen);
 
   comment.init();
 
