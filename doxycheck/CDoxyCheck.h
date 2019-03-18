@@ -13,6 +13,9 @@ class CDoxyCheck : public CCommentParser {
   bool isQuiet() const { return quiet_; }
   void setQuiet(bool b) { quiet_ = b; }
 
+  bool isDebug() const { return debug_; }
+  void setDebug(bool b) { debug_ = b; }
+
   void initFile() override;
   void termFile() override;
 
@@ -23,6 +26,8 @@ class CDoxyCheck : public CCommentParser {
   void put_comment(char c) override;
 
   void set_comment_type(CommentType type) override;
+
+  void parseText(const std::string &str, int lineNum);
 
  private:
   void checkComment();
@@ -37,15 +42,49 @@ class CDoxyCheck : public CCommentParser {
     }
   };
 
-  using Lines = std::vector<TextLine>;
+  struct ParseData {
+    std::string token;
+
+    void reset() {
+      token = "";
+    }
+  };
+
+  enum class TokenType {
+    NONE,
+    STRING,
+    NUMBER,
+    IDENTIFIER,
+    OPERATOR,
+    SEPARATOR,
+    COMMENT
+  };
+
+  struct Token {
+    TokenType   type        { TokenType::NONE };
+    std::string str;
+    int         lineNum     { 0 };
+    CommentType commentType { CommentType::NONE };
+
+    Token(TokenType type=TokenType::NONE, const std::string &str="", int lineNum=-1) :
+     type(type), str(str), lineNum(lineNum) {
+    }
+  };
+
+  using Lines  = std::vector<TextLine>;
+  using Tokens = std::vector<Token>;
 
   bool        quiet_       { false };
+  bool        debug_       { false };
   CommentType commentType_ { CommentType::NONE };
   std::string commentStr_;
   Lines       textLines_;
   std::string textStr_;
+  char        lastChar_    { '\0' };
   std::string fileName_;
   int         lineNum_     { 1 };
+  std::string token_;
+  Tokens      tokens_;
 };
 
 #endif
