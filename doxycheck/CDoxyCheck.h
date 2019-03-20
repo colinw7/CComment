@@ -1,12 +1,13 @@
 #ifndef CDoxyCheck_H
 #define CDoxyCheck_H
 
-#include <CComment.h>
+#include <string>
+#include <vector>
 
 /*!
  * Check if classes in header files have doxygen comments
  */
-class CDoxyCheck : public CCommentParser {
+class CDoxyCheck {
  public:
   CDoxyCheck();
 
@@ -16,38 +17,18 @@ class CDoxyCheck : public CCommentParser {
   bool isDebug() const { return debug_; }
   void setDebug(bool b) { debug_ = b; }
 
-  void initFile() override;
-  void termFile() override;
-
-  void start_comment() override;
-  void end_comment  () override;
-
-  void put_normal (char c) override;
-  void put_comment(char c) override;
-
-  void set_comment_type(CommentType type) override;
-
-  void parseText(const std::string &str, int lineNum);
+  bool processFile(const std::string &fileName);
 
  private:
-  void checkComment();
-
- private:
-  struct TextLine {
-    std::string str;
-    int         lineNum { 0 };
-
-    TextLine(const std::string &str, int lineNum) :
-     str(str), lineNum(lineNum) {
-    }
-  };
-
-  struct ParseData {
-    std::string token;
-
-    void reset() {
-      token = "";
-    }
+  enum class CommentType {
+    NONE,
+    C_NORMAL,
+    CPP_NORMAL,
+    CPP_BLOCK,
+    JAVADOC,
+    JAVADOC_AFTER,
+    QT,
+    QT_AFTER
   };
 
   enum class TokenType {
@@ -58,6 +39,22 @@ class CDoxyCheck : public CCommentParser {
     OPERATOR,
     SEPARATOR,
     COMMENT
+  };
+
+  enum class ScopePrivacy {
+    PUBLIC,
+    PRIVATE,
+    PROTECTED
+  };
+
+ private:
+  struct Line {
+    std::string str;
+    int         lineNum { 0 };
+
+    Line(const std::string &str="", int lineNum=0) :
+     str(str), lineNum(lineNum) {
+    }
   };
 
   struct Token {
@@ -71,20 +68,34 @@ class CDoxyCheck : public CCommentParser {
     }
   };
 
-  using Lines  = std::vector<TextLine>;
-  using Tokens = std::vector<Token>;
+  struct ScopeData {
+    ScopePrivacy privacy { ScopePrivacy::PUBLIC };
+  };
 
+  using Lines      = std::vector<Line>;
+  using Tokens     = std::vector<Token>;
+  using ScopeDatas = std::vector<ScopeData>;
+
+ private:
+  void processLines();
+
+  void processLine(const Line &line);
+
+  void checkComments();
+
+  void checkCommented(const Token &token1, const Token &token2, CommentType commentType,
+                      const ScopeData &scopeData);
+
+ private:
   bool        quiet_       { false };
   bool        debug_       { false };
-  CommentType commentType_ { CommentType::NONE };
-  std::string commentStr_;
-  Lines       textLines_;
-  std::string textStr_;
-  char        lastChar_    { '\0' };
   std::string fileName_;
+  Lines       lines_;
   int         lineNum_     { 1 };
+  CommentType commentType_ { CommentType::NONE };
   std::string token_;
   Tokens      tokens_;
+  bool        inComment_   { false };
 };
 
 #endif

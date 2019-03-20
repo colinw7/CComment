@@ -1,5 +1,4 @@
 #include <CDoxyCheck.h>
-#include <vector>
 #include <iostream>
 #include <cstring>
 #include <cassert>
@@ -46,62 +45,100 @@ CDoxyCheck()
 {
 }
 
-void
+bool
 CDoxyCheck::
-start_comment()
+processFile(const std::string &fileName)
 {
-  commentStr_ = "";
-}
+  // init
+  fileName_ = fileName;
 
-void
-CDoxyCheck::
-end_comment()
-{
-  if (isDebug())
-    std::cerr << "Comment: " << commentStr_ << "\n";;
+  lines_.clear();
 
-  Token token(TokenType::COMMENT, commentStr_, lineNum_);
+  commentType_ = CommentType::NONE;
 
-  token.commentType = commentType_;
+  token_ = "";
 
-  tokens_.push_back(token);
+  tokens_.clear();
 
-  commentStr_ = "";
-  textStr_    = "";
+  //---
 
-  textLines_.clear();
-}
+  // read lines
+  FILE *fp = fopen(fileName_.c_str(), "r");
+  if (! fp) return false;
 
-void
-CDoxyCheck::
-put_normal(char c)
-{
-  if (c == '\n') {
-    if (lastChar_ == '\\') {
-      textStr_ += c;
+  int  c;
+  char lastChar = '\0';
+
+  Line line;
+  int  lineNum = 1;
+
+  line.lineNum = lineNum;
+
+  while ((c = fgetc(fp)) != EOF) {
+    if (c == '\n') {
+      ++lineNum;
+
+      if (lastChar != '\\') {
+        lines_.push_back(line);
+
+        line.str     = "";
+        line.lineNum = lineNum;
+        lastChar     = '\0';
+      }
+      else {
+        line.str = line.str.substr(0, line.str.size() - 1);
+      }
     }
     else {
-      parseText(textStr_, lineNum_);
-
-      textLines_.push_back(TextLine(textStr_, lineNum_));
-
-      ++lineNum_;
-
-      textStr_  = "";
-      lastChar_ = '\0';
+      line.str += char(c);
     }
-  }
-  else {
-    textStr_ += c;
+
+    lastChar = c;
   }
 
-  lastChar_ = c;
+  fclose(fp);
+
+  //---
+
+  // process lines
+  if (isDebug()) std::cerr << "Process Lines\n";
+
+  processLines();
+
+  //---
+
+  // check comments
+  if (isDebug()) std::cerr << "\nCheck Comments\n";
+
+  checkComments();
+
+  //---
+
+  fileName_ = "";
+  lineNum_  = 0;
+
+  return true;
 }
 
 void
 CDoxyCheck::
-parseText(const std::string &str, int lineNum)
+processLines()
 {
+  inComment_ = false;
+
+  for (const auto &line : lines_)
+    processLine(line);
+}
+
+void
+CDoxyCheck::
+processLine(const Line &line)
+{
+  const std::string& str     = line.str;
+  int                lineNum = line.lineNum;
+
+  //---
+
   auto isOperatorChar = [](char c) {
     return (strchr("()[]+-*/%<>=&|!~^.?:", c) != 0);
   };
@@ -453,6 +490,95 @@ parseText(const std::string &str, int lineNum)
     return token;
   };
 
+  auto isComment = [](const std::string &str, int &i, int len) {
+    return (i < len - 1 && str[i] == '/' && (str[i + 1] == '/' || str[i + 1] == '*'));
+  };
+
+  auto readComment = [](const std::string &str, int &i, int len,
+                        CommentType &type, bool &complete) {
+    type     = CommentType::NONE;
+    complete = true;
+
+    std::string token;
+
+    assert(str[i] == '/');
+
+    token += str[i++];
+
+    char c1 = str[i++];
+
+    assert(c1 == '/' || c1 == '*');
+
+    token += c1;
+
+    if (c1 == '/') {
+      type = CommentType::CPP_NORMAL;
+
+      while (i < len)
+        token += str[i++];
+
+      if      (token[2] == '/') {
+        type = CommentType::CPP_BLOCK;
+      }
+      else if (token[2] == '!') {
+        if (token[3] == '<')
+          type = CommentType::QT_AFTER;
+        else
+          type = CommentType::QT;
+      }
+    }
+    else {
+      complete = false;
+
+      type = CommentType::C_NORMAL;
+
+      while (i < len) {
+        if (i < len - 1 && str[i] == '*' && str[i + 1] == '/') {
+          token += str[i++];
+          token += str[i++];
+          complete = true;
+          break;
+        }
+        else
+          token += str[i++];
+      }
+
+      if      (token[2] == '*') {
+        if (token[3] == '<')
+          type = CommentType::JAVADOC_AFTER;
+        else
+          type = CommentType::JAVADOC;
+      }
+      else if (token[2] == '!') {
+        if (token[3] == '<')
+          type = CommentType::QT_AFTER;
+        else
+          type = CommentType::QT;
+      }
+    }
+
+    return token;
+  };
+
+  auto continuedComment = [](const std::string &str, int &i, int len, bool &complete) {
+    std::string token;
+
+    complete = false;
+
+    while (i < len) {
+      if (i < len - 1 && str[i] == '*' && str[i + 1] == '/') {
+        token += str[i++];
+        token += str[i++];
+        complete = true;
+        break;
+      }
+      else
+        token += str[i++];
+    }
+
+    return token;
+  };
+
   auto isNumber = [](const std::string &str, int &i, int len) {
     if (i < len && ::isdigit(str[i]))
       return true;
@@ -531,9 +657,15 @@ parseText(const std::string &str, int lineNum)
   };
 
   auto addToken = [&](TokenType type) {
-    tokens_.push_back(Token(type, token_, lineNum));
+    Token token(type, token_, lineNum);
 
-    token_ = "";
+    if (type == TokenType::COMMENT)
+      token.commentType = commentType_;
+
+    tokens_.push_back(token);
+
+    token_       = "";
+    commentType_ = CommentType::NONE;
   };
 
   //---
@@ -547,17 +679,44 @@ parseText(const std::string &str, int lineNum)
     return;
 
   while (i < len) {
-    if      (str[i] == '\"') {
+    if      (inComment_) {
+      bool complete;
+
+      std::string token = continuedComment(str, i, len, complete);
+
+      token_ += token;
+
+      if (complete) {
+        if (isDebug()) std::cerr << "Comment: " << token_ << "\n";
+        addToken(TokenType::COMMENT);
+        inComment_ = false;
+      }
+    }
+    else if (str[i] == '\"') {
       token_ = readDoubleQuotedString(str, i, len);
 
-      if (isDebug()) std::cerr << "String: " << token_ << "\n";;
+      if (isDebug()) std::cerr << "String: " << token_ << "\n";
       addToken(TokenType::STRING);
     }
     else if (str[i] == '\'') {
       token_ = readSingleQuotedString(str, i, len);
 
-      if (isDebug()) std::cerr << "String: " << token_ << "\n";;
+      if (isDebug()) std::cerr << "String: " << token_ << "\n";
       addToken(TokenType::STRING);
+    }
+    else if (isComment(str, i, len)) {
+      commentType_ = CommentType::NONE;
+
+      bool complete;
+
+      token_ = readComment(str, i, len, commentType_, complete);
+
+      if (complete) {
+        if (isDebug()) std::cerr << "Comment: " << token_ << "\n";
+        addToken(TokenType::COMMENT);
+      }
+      else
+        inComment_ = true;
     }
     else if (isNumber(str, i, len)) {
       token_ = readNumber(str, i, len);
@@ -594,67 +753,78 @@ parseText(const std::string &str, int lineNum)
 
 void
 CDoxyCheck::
-put_comment(char c)
+checkComments()
 {
-  if (c == '\n')
-    ++lineNum_;
+  auto printPrivacy = [](ScopePrivacy privacy, bool newline=true) {
+    if      (privacy == ScopePrivacy::PUBLIC   ) std::cerr << "PUBLIC";
+    else if (privacy == ScopePrivacy::PROTECTED) std::cerr << "PROTECTED";
+    else if (privacy == ScopePrivacy::PRIVATE  ) std::cerr << "PRIVATE";
 
-  commentStr_ += c;
-}
+    if (newline) std::cerr << "\n";
+  };
 
-void
-CDoxyCheck::
-set_comment_type(CommentType type)
-{
-  commentType_ = type;
-}
+  //---
 
-void
-CDoxyCheck::
-initFile()
-{
-  fileName_ = filename();
-  lineNum_  = 0;
+  ScopeData scopeData;
 
-  commentType_ = CommentType::NONE;
-  commentStr_  = "";
+  ScopeDatas scopeDatas;
 
-  textLines_.clear();
+  CommentType commentType { CommentType::NONE };
 
-  textStr_  = "";
-  lastChar_ = '\0';
+  //---
 
-  token_ = "";
+  auto printScopeStack = [&]() {
+    std::cerr << "Stack (#" << scopeDatas.size() << ")";
 
-  tokens_.clear();
-}
+    for (auto &scopeData1 : scopeDatas) {
+      std::cerr << " ";
 
-void
-CDoxyCheck::
-termFile()
-{
-  if (textStr_ != "") {
-    textLines_.push_back(TextLine(textStr_, lineNum_));
+      printPrivacy(scopeData1.privacy, false);
+    }
 
-    textStr_ = "";
-  }
+    std::cerr << " ";
 
-  checkComment();
-}
+    printPrivacy(scopeData.privacy);
+  };
 
-void
-CDoxyCheck::
-checkComment()
-{
-  bool isPublic = true;
+  auto pushScope = [&](ScopePrivacy privacy) {
+    scopeDatas.push_back(scopeData);
+
+    scopeData = ScopeData();
+
+    scopeData.privacy = privacy;
+
+    commentType = CommentType::NONE;
+
+    if (isDebug()) printScopeStack();
+  };
+
+  auto popScope = [&]() {
+    if (! scopeDatas.empty()) {
+      scopeData = scopeDatas.back();
+
+      scopeDatas.pop_back();
+    }
+    else {
+      std::cerr << "Mismatched {}\n";
+    }
+
+    commentType = CommentType::NONE;
+
+    if (isDebug()) printScopeStack();
+  };
+
+  //---
+
+  ScopePrivacy nextPrivacy = ScopePrivacy::PUBLIC;
 
   int i   = 0;
   int len = tokens_.size();
 
-  CommentType commentType { CommentType::NONE };
-
   while (i < len) {
     const Token &token1 = tokens_[i];
+
+    if (isDebug()) std::cerr << "Token: " << token1.str << "\n";
 
     if      (token1.type == TokenType::COMMENT) {
       if (commentType != CommentType::QT)
@@ -666,56 +836,38 @@ checkComment()
 
       const Token &token2 = tokens_[i + 1];
 
-      if (token2.type == TokenType::IDENTIFIER && token2.str == "class")
+      if (token2.type == TokenType::IDENTIFIER && token2.str == "class") {
         ++i;
+
+        if (isDebug()) std::cerr << "Token: " << token2.str << "\n";
+      }
     }
     else if (token1.type == TokenType::IDENTIFIER && token1.str == "class") {
       if (i >= len - 2)
         break;
 
-      const Token &token2 = tokens_[++i];
-      const Token &token3 = tokens_[++i];
+      const Token &token2 = tokens_[i + 1];
+      const Token &token3 = tokens_[i + 2];
 
       if (token2.type == TokenType::IDENTIFIER &&
           (token3.type == TokenType::SEPARATOR && token3.str != ";")) {
-        bool        fail = false;
-        std::string errorMsg;
+        checkCommented(token1, token2, commentType, scopeData);
 
-        if      (commentType == CommentType::NONE) {
-          fail     = true;
-          errorMsg = "no comment";
-        }
-        else if (commentType != CommentType::QT) {
-          fail     = true;
-          errorMsg = "no doxygen comment";
-        }
-        else {
-          fail     = false;
-          errorMsg = "doxygen comment";
-        }
+        nextPrivacy = ScopePrivacy::PRIVATE;
+      }
+    }
+    else if (token1.type == TokenType::IDENTIFIER && token1.str == "struct") {
+      if (i >= len - 2)
+        break;
 
-        if (isPublic) {
-          if (! isQuiet()) {
-            std::cout << fileName_ << ":" << token1.lineNum << " ";
+      const Token &token2 = tokens_[i + 1];
+      const Token &token3 = tokens_[i + 2];
 
-            std::cout << "class " << token2.str;
+      if (token2.type == TokenType::IDENTIFIER &&
+          (token3.type == TokenType::SEPARATOR && token3.str != ";")) {
+        //checkCommented(token1, token2, commentType, scopeData);
 
-            std::cout << " : " << (fail ? "FAIL" : "PASS") << " : " << errorMsg;
-
-            std::cout << "\n";
-          }
-          else {
-            if (fail) {
-              std::cout << fileName_ << ":" << token1.lineNum << " ";
-
-              std::cout << "class " << token2.str;
-
-              std::cout << " : " << errorMsg;
-
-              std::cout << "\n";
-            }
-          }
-        }
+        nextPrivacy = ScopePrivacy::PUBLIC;
       }
     }
     else if (token1.type == TokenType::IDENTIFIER &&
@@ -723,16 +875,76 @@ checkComment()
       if (i >= len - 1)
         break;
 
-      const Token &token2 = tokens_[++i];
+      const Token &token2 = tokens_[i + 1];
 
       if (token2.type == TokenType::OPERATOR && token2.str == ":") {
-        isPublic = (token1.str == "public");
+        if      (token1.str == "public")
+          scopeData.privacy = ScopePrivacy::PUBLIC;
+        else if (token1.str == "protected")
+          scopeData.privacy = ScopePrivacy::PROTECTED;
+        else if (token1.str == "private")
+          scopeData.privacy = ScopePrivacy::PRIVATE;
+
+        if (isDebug()) printScopeStack();
       }
+    }
+    else if (token1.type == TokenType::SEPARATOR && token1.str == "{") {
+      pushScope(nextPrivacy);
+
+      nextPrivacy = ScopePrivacy::PUBLIC;
+    }
+    else if (token1.type == TokenType::SEPARATOR && token1.str == "}") {
+      popScope();
     }
     else {
       commentType = CommentType::NONE;
     }
 
     ++i;
+  }
+}
+
+void
+CDoxyCheck::
+checkCommented(const Token &token1, const Token &token2, CommentType commentType,
+               const ScopeData &scopeData)
+{
+  bool        fail = false;
+  std::string errorMsg;
+
+  if      (commentType == CommentType::NONE) {
+    fail     = true;
+    errorMsg = "no comment";
+  }
+  else if (commentType != CommentType::QT) {
+    fail     = true;
+    errorMsg = "no doxygen comment";
+  }
+  else {
+    fail     = false;
+    errorMsg = "doxygen comment";
+  }
+
+  if (scopeData.privacy == ScopePrivacy::PUBLIC) {
+    if (! isQuiet()) {
+      std::cout << fileName_ << ":" << token1.lineNum << " ";
+
+      std::cout << "class " << token2.str;
+
+      std::cout << " : " << (fail ? "FAIL" : "PASS") << " : " << errorMsg;
+
+      std::cout << "\n";
+    }
+    else {
+      if (fail) {
+        std::cout << fileName_ << ":" << token1.lineNum << " ";
+
+        std::cout << "class " << token2.str;
+
+        std::cout << " : " << errorMsg;
+
+        std::cout << "\n";
+      }
+    }
   }
 }
