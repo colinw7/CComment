@@ -7,17 +7,27 @@
 int
 main(int argc, char **argv)
 {
-  bool quiet = false;
-  bool debug = false;
+  bool quiet       = false;
+  bool checkClass  = false;
+  bool checkStruct = false;
+  bool debug       = false;
 
   std::vector<std::string> files;
 
   for (int i = 1; i < argc; i++) {
     if (argv[i][0] == '-') {
-      if      (argv[i][1] == 'q')
+      std::string arg = &argv[i][1];
+
+      if      (arg == "q" || arg == "quiet")
         quiet = true;
-      else if (argv[i][1] == 'D')
+      else if (arg == "class")
+        checkClass = true;
+      else if (arg == "struct")
+        checkStruct = true;
+      else if (arg == "D" || arg == "debug")
         debug = true;
+      else if (arg == "h" || arg == "help")
+        std::cerr << "Usage: CDoxyCheck [-q] [-struct] [-class] [-D] [-h]\n";
       else
         std::cerr << "Illegal option " << argv[i] << "\n";
     }
@@ -25,9 +35,18 @@ main(int argc, char **argv)
       files.push_back(argv[i]);
   }
 
+  if (! checkClass && ! checkStruct)
+    checkClass = true;
+
+  //---
+
   CDoxyCheck check;
 
   check.setQuiet(quiet);
+
+  check.setCheckClass(checkClass);
+  check.setCheckStruct(checkStruct);
+
   check.setDebug(debug);
 
   uint num_files = files.size();
@@ -799,14 +818,14 @@ checkComments()
     if (isDebug()) printScopeStack();
   };
 
-  auto popScope = [&]() {
+  auto popScope = [&](int lineNum) {
     if (! scopeDatas.empty()) {
       scopeData = scopeDatas.back();
 
       scopeDatas.pop_back();
     }
     else {
-      std::cerr << "Mismatched {}\n";
+      if (isDebug()) std::cout << fileName_ << ":" << lineNum << " Mismatched {}\n";
     }
 
     commentType = CommentType::NONE;
@@ -830,6 +849,33 @@ checkComments()
       if (commentType != CommentType::QT)
         commentType = token1.commentType;
     }
+    else if (token1.type == TokenType::IDENTIFIER && token1.str == "template") {
+      if (i >= len - 1)
+        break;
+
+      const Token &token2 = tokens_[i + 1];
+
+      if (token2.type == TokenType::OPERATOR && token2.str == "<") {
+        i += 2;
+
+        int brackets = 1;
+
+        while (i < len) {
+          const Token &token3 = tokens_[i];
+
+          if      (token3.type == TokenType::OPERATOR && token2.str == "<")
+            ++brackets;
+          else if (token3.type == TokenType::OPERATOR && token2.str == ">") {
+            --brackets;
+
+            if (brackets == 0)
+              break;
+          }
+
+          ++i;
+        }
+      }
+    }
     else if (token1.type == TokenType::IDENTIFIER && token1.str == "enum") {
       if (i >= len - 1)
         break;
@@ -850,8 +896,9 @@ checkComments()
       const Token &token3 = tokens_[i + 2];
 
       if (token2.type == TokenType::IDENTIFIER &&
-          (token3.type == TokenType::SEPARATOR && token3.str != ";")) {
-        checkCommented(token1, token2, commentType, scopeData);
+          (token3.type != TokenType::SEPARATOR || token3.str != ";")) {
+        if (isCheckClass())
+          checkCommented(token1, token2, commentType, scopeData);
 
         nextPrivacy = ScopePrivacy::PRIVATE;
       }
@@ -864,8 +911,9 @@ checkComments()
       const Token &token3 = tokens_[i + 2];
 
       if (token2.type == TokenType::IDENTIFIER &&
-          (token3.type == TokenType::SEPARATOR && token3.str != ";")) {
-        //checkCommented(token1, token2, commentType, scopeData);
+          (token3.type != TokenType::SEPARATOR || token3.str != ";")) {
+        if (isCheckStruct())
+          checkCommented(token1, token2, commentType, scopeData);
 
         nextPrivacy = ScopePrivacy::PUBLIC;
       }
@@ -894,7 +942,7 @@ checkComments()
       nextPrivacy = ScopePrivacy::PUBLIC;
     }
     else if (token1.type == TokenType::SEPARATOR && token1.str == "}") {
-      popScope();
+      popScope(token1.lineNum);
     }
     else {
       commentType = CommentType::NONE;

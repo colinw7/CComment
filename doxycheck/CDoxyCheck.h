@@ -14,6 +14,12 @@ class CDoxyCheck {
   bool isQuiet() const { return quiet_; }
   void setQuiet(bool b) { quiet_ = b; }
 
+  bool isCheckClass() const { return checkClass_; }
+  void setCheckClass(bool b) { checkClass_ = b; }
+
+  bool isCheckStruct() const { return checkStruct_; }
+  void setCheckStruct(bool b) { checkStruct_ = b; }
+
   bool isDebug() const { return debug_; }
   void setDebug(bool b) { debug_ = b; }
 
@@ -88,6 +94,8 @@ class CDoxyCheck {
 
  private:
   bool        quiet_       { false };
+  bool        checkClass_  { false };
+  bool        checkStruct_ { false };
   bool        debug_       { false };
   std::string fileName_;
   Lines       lines_;
