@@ -20,6 +20,9 @@ class CDoxyCheck {
   bool isCheckStruct() const { return checkStruct_; }
   void setCheckStruct(bool b) { checkStruct_ = b; }
 
+  bool isCheckAfter() const { return checkAfter_; }
+  void setCheckAfter(bool b) { checkAfter_ = b; }
+
   bool isDebug() const { return debug_; }
   void setDebug(bool b) { debug_ = b; }
 
@@ -96,6 +99,7 @@ class CDoxyCheck {
   bool        quiet_       { false };
   bool        checkClass_  { false };
   bool        checkStruct_ { false };
+  bool        checkAfter_  { false };
   bool        debug_       { false };
   std::string fileName_;
   Lines       lines_;

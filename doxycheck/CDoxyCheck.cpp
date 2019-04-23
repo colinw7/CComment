@@ -10,6 +10,7 @@ main(int argc, char **argv)
   bool quiet       = false;
   bool checkClass  = false;
   bool checkStruct = false;
+  bool checkAfter  = false;
   bool debug       = false;
 
   std::vector<std::string> files;
@@ -24,10 +25,12 @@ main(int argc, char **argv)
         checkClass = true;
       else if (arg == "struct")
         checkStruct = true;
+      else if (arg == "after")
+        checkAfter = true;
       else if (arg == "D" || arg == "debug")
         debug = true;
       else if (arg == "h" || arg == "help")
-        std::cerr << "Usage: CDoxyCheck [-q] [-struct] [-class] [-D] [-h]\n";
+        std::cerr << "Usage: CDoxyCheck [-q] [-struct] [-class] [-after] [-D] [-h]\n";
       else
         std::cerr << "Illegal option " << argv[i] << "\n";
     }
@@ -35,7 +38,7 @@ main(int argc, char **argv)
       files.push_back(argv[i]);
   }
 
-  if (! checkClass && ! checkStruct)
+  if (! checkClass && ! checkStruct && ! checkAfter)
     checkClass = true;
 
   //---
@@ -46,6 +49,7 @@ main(int argc, char **argv)
 
   check.setCheckClass(checkClass);
   check.setCheckStruct(checkStruct);
+  check.setCheckAfter(checkAfter);
 
   check.setDebug(debug);
 
@@ -846,6 +850,22 @@ checkComments()
     if (isDebug()) std::cerr << "Token: " << token1.str << "\n";
 
     if      (token1.type == TokenType::COMMENT) {
+      if (i > 0 && isCheckAfter()) {
+        const Token &token0 = tokens_[i - 1];
+
+        if (token0.type == TokenType::SEPARATOR && token0.str == ";") {
+          if (token0.lineNum == token1.lineNum &&
+              (token1.commentType != CommentType::QT_AFTER &&
+               token1.commentType != CommentType::JAVADOC_AFTER)) {
+            std::cout << fileName_ << ":" << token1.lineNum << " ";
+
+            std::cout << "; " << token1.str;
+
+            std::cout << " : Bad after comment\n";
+          }
+        }
+      }
+
       if (commentType != CommentType::QT)
         commentType = token1.commentType;
     }
@@ -977,7 +997,7 @@ checkCommented(const Token &token1, const Token &token2, CommentType commentType
     if (! isQuiet()) {
       std::cout << fileName_ << ":" << token1.lineNum << " ";
 
-      std::cout << "class " << token2.str;
+      std::cout << token1.str << " " << token2.str;
 
       std::cout << " : " << (fail ? "FAIL" : "PASS") << " : " << errorMsg;
 
@@ -987,7 +1007,7 @@ checkCommented(const Token &token1, const Token &token2, CommentType commentType
       if (fail) {
         std::cout << fileName_ << ":" << token1.lineNum << " ";
 
-        std::cout << "class " << token2.str;
+        std::cout << token1.str << " " << token2.str;
 
         std::cout << " : " << errorMsg;
 
