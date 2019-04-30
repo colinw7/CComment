@@ -883,9 +883,9 @@ checkComments()
         while (i < len) {
           const Token &token3 = tokens_[i];
 
-          if      (token3.type == TokenType::OPERATOR && token2.str == "<")
+          if      (token3.type == TokenType::OPERATOR && token3.str == "<")
             ++brackets;
-          else if (token3.type == TokenType::OPERATOR && token2.str == ">") {
+          else if (token3.type == TokenType::OPERATOR && token3.str == ">") {
             --brackets;
 
             if (brackets == 0)
@@ -894,6 +894,9 @@ checkComments()
 
           ++i;
         }
+
+        if (brackets != 0)
+          std::cerr << "Mismatched templace <>\n";
       }
     }
     else if (token1.type == TokenType::IDENTIFIER && token1.str == "enum") {
