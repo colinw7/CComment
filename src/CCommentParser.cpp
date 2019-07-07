@@ -20,7 +20,9 @@ processCFile(const std::string &file)
 {
   bool rc = false;
 
-  file_ = file;
+  file_    = file;
+  lineNum_ = 0;
+  charNum_ = 0;
 
   initFile();
 
@@ -52,6 +54,16 @@ bool
 CCommentParser::
 processCChar(int c)
 {
+  if (c == '\n') {
+    ++lineNum_;
+
+    charNum_ = 0;
+  }
+  else
+    ++charNum_;
+
+  //---
+
   // in double quoted string
   if      (state_.in_string1) {
     if     (c == '\\') {

@@ -12,20 +12,51 @@ void
 CComment::
 init()
 {
-  if (isSpell())
-    CSpellInit();
 }
 
 void
 CComment::
 term()
 {
+#if 0
+  for (const auto &ls : fileMispelled_) {
+    std::cerr << ls.first << "\n";
+
+    for (const auto &cs : ls.second) {
+      for (const auto &s : cs.second)
+        std::cerr << " " << s;
+    }
+
+    std::cerr << "\n";
+  }
+#endif
+
+  for (const auto &sf : mispelled_) {
+    std::cerr << sf.first;
+
+    std::cerr << " (";
+
+    bool first = true;
+
+    for (const auto &fd : sf.second) {
+      if (! first)
+        std::cerr << ", ";
+
+      std::cerr << fd.file;
+
+      first = false;
+    }
+
+    std::cerr << ")\n";
+  }
 }
 
 void
 CComment::
 initFile()
 {
+  if (isSpell())
+    CSpellInit();
 }
 
 void
@@ -34,6 +65,9 @@ termFile()
 {
   if (! isQuiet())
     output_stats();
+
+  if (isSpell())
+    CSpellTerm();
 }
 
 void
@@ -96,7 +130,7 @@ put_comment(char c)
         else {
           if (in_word_) {
             if (CSpellCheckWord(word_) == 0)
-              std::cerr << "Mispelled: " << word_ << std::endl;
+              mispelled(word_);
 
             word_    = "";
             in_word_ = false;
@@ -116,4 +150,15 @@ CComment::
 is_word_char(char c)
 {
   return (isalpha(c) || c == '\'');
+}
+
+void
+CComment::
+mispelled(const std::string &word)
+{
+  fileMispelled_[file_][lineNum_].push_back(word);
+
+  mispelled_[word].push_back(FileData(file_, lineNum_, charNum_));
+
+  //std::cerr << "Mispelled: '" << word << "' " << file_ << "@" << lineNum_ << "\n";
 }

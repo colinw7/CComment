@@ -64,7 +64,9 @@ class CCommentParser {
   using CharBuffer = std::vector<char>;
 
   std::string file_;
-  FILE*       fp_ { nullptr };
+  int         lineNum_ { 0 };
+  int         charNum_ { 0 };
+  FILE*       fp_      { nullptr };
   State       state_;
   CharBuffer  commentBuffer_;
 };
