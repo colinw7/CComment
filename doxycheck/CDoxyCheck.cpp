@@ -1,4 +1,5 @@
 #include <CDoxyCheck.h>
+#include <CSpell.h>
 #include <iostream>
 #include <cstring>
 #include <cassert>
@@ -11,6 +12,7 @@ main(int argc, char **argv)
   bool checkClass  = false;
   bool checkStruct = false;
   bool checkAfter  = false;
+  bool spell       = false;
   bool debug       = false;
 
   std::vector<std::string> files;
@@ -29,6 +31,8 @@ main(int argc, char **argv)
         checkAfter = true;
       else if (arg == "D" || arg == "debug")
         debug = true;
+      else if (arg == "spell")
+        spell = true;
       else if (arg == "h" || arg == "help")
         std::cerr << "Usage: CDoxyCheck [-q] [-struct] [-class] [-after] [-D] [-h]\n";
       else
@@ -51,6 +55,7 @@ main(int argc, char **argv)
   check.setCheckStruct(checkStruct);
   check.setCheckAfter(checkAfter);
 
+  check.setSpell(spell);
   check.setDebug(debug);
 
   uint num_files = files.size();
@@ -72,6 +77,27 @@ bool
 CDoxyCheck::
 processFile(const std::string &fileName)
 {
+  class SpellRAII {
+   public:
+    SpellRAII(bool active) :
+     active_(active) {
+      if (active_)
+        CSpellInit();
+    }
+
+   ~SpellRAII() {
+      if (active_)
+        CSpellTerm();
+    }
+
+   private:
+    bool active_ { false };
+  };
+
+  SpellRAII spell(isSpell());
+
+  //---
+
   // init
   fileName_ = fileName;
 
@@ -868,6 +894,9 @@ checkComments()
 
       if (commentType != CommentType::QT)
         commentType = token1.commentType;
+
+      if (isSpell())
+        spellCheckComment(token1.str);
     }
     else if (token1.type == TokenType::IDENTIFIER && token1.str == "template") {
       if (i >= len - 1)
@@ -1017,5 +1046,34 @@ checkCommented(const Token &token1, const Token &token2, CommentType commentType
         std::cout << "\n";
       }
     }
+  }
+}
+
+void
+CDoxyCheck::
+spellCheckComment(const std::string &str)
+{
+  int i   = 0;
+  int len = str.size();
+
+  while (i < len && ! isspace(str[i]))
+    ++i;
+
+  while (i < len && isspace(str[i]))
+    ++i;
+
+  while (i < len) {
+    std::string word;
+
+    while (i < len && ! isspace(str[i]) && ! ispunct(str[i]))
+      word += str[i++];
+
+    if (word != "") {
+      if (CSpellCheckWord(word) == 0)
+        std::cerr << "Mispelled: " << word << "\n";
+    }
+
+    while (i < len && (isspace(str[i]) || ispunct(str[i])))
+      ++i;
   }
 }

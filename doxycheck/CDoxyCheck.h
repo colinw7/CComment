@@ -23,6 +23,9 @@ class CDoxyCheck {
   bool isCheckAfter() const { return checkAfter_; }
   void setCheckAfter(bool b) { checkAfter_ = b; }
 
+  bool isSpell() const { return spell_; }
+  void setSpell(bool b) { spell_ = b; }
+
   bool isDebug() const { return debug_; }
   void setDebug(bool b) { debug_ = b; }
 
@@ -95,11 +98,14 @@ class CDoxyCheck {
   void checkCommented(const Token &token1, const Token &token2, CommentType commentType,
                       const ScopeData &scopeData);
 
+  void spellCheckComment(const std::string &str);
+
  private:
   bool        quiet_       { false };
   bool        checkClass_  { false };
   bool        checkStruct_ { false };
   bool        checkAfter_  { false };
+  bool        spell_       { false };
   bool        debug_       { false };
   std::string fileName_;
   Lines       lines_;
